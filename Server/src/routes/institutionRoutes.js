@@ -31,16 +31,16 @@ const {
 router.use(protect);
 router.use(enforceTenantIsolation);
 
-// Institutions
-router.get('/', getAllInstitutions);
-router.get('/:id', getInstitutionById);
-router.post('/', requireRoleLevel(6), createInstitution);
-router.put('/:id', requireRoleLevel(5), updateInstitution);
-
-// Pending Approvals & User Grant
+// Pending Approvals & User Grant (Must be defined before /:id)
 router.get('/pending-approvals', requireRoleLevel(3), getPendingApprovals);
 router.post('/approve-user/:id', requireRoleLevel(3), approveUser);
 router.post('/reject-user/:id', requireRoleLevel(3), rejectUser);
+
+// Institutions
+router.get('/', getAllInstitutions);
+router.post('/', requireRoleLevel(6), createInstitution);
+router.get('/:id', getInstitutionById);
+router.put('/:id', requireRoleLevel(5), updateInstitution);
 
 // Departments
 router.get('/departments/list', getDepartments);
