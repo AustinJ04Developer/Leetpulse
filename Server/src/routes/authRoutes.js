@@ -1,8 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const { register, getRegistrationOptions, registerInstitution, registerStaff, login, getMe, getSessions, revokeSession, forgotPassword, resetPassword } = require('../controllers/authController');
+const { register, verifyLeetCode, getRegistrationOptions, registerInstitution, registerStaff, login, getMe, getSessions, revokeSession, forgotPassword, resetPassword } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 
+router.get('/verify-leetcode', verifyLeetCode);
+router.post('/verify-leetcode', verifyLeetCode);
 router.get('/registration-options', getRegistrationOptions);
 router.post('/register', register);
 router.post('/register-institution', registerInstitution);

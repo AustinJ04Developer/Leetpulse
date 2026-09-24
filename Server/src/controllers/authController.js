@@ -59,6 +59,29 @@ const getRegistrationOptions = async (req, res) => {
   }
 };
 
+/**
+ * Public Verification Endpoint: Checks if a LeetCode URL or username exists on LeetCode.
+ * Returns authenticity status, real name, avatar, and problem solve metrics.
+ */
+const verifyLeetCode = async (req, res) => {
+  try {
+    const rawInput = req.query.input || req.query.handle || req.query.url || req.body?.input || req.body?.handle || req.body?.url;
+    if (!rawInput || !String(rawInput).trim()) {
+      return res.status(400).json({ 
+        success: false, 
+        isValid: false, 
+        message: 'Please provide a LeetCode profile URL or username.' 
+      });
+    }
+
+    const { verifyLeetCodeUser } = require('../services/leetcodeService');
+    const result = await verifyLeetCodeUser(String(rawInput).trim());
+    return res.json({ success: true, ...result });
+  } catch (err) {
+    return res.status(500).json({ success: false, isValid: false, message: err.message });
+  }
+};
+
 const register = async (req, res) => {
   try {
     const {
@@ -100,6 +123,29 @@ const register = async (req, res) => {
 
     if (existingUser) {
       return res.status(400).json({ success: false, message: 'Email is already registered' });
+    }
+
+    // LeetCode Profile Verification Layer
+    const { verifyLeetCodeUser, syncUserLeetCode } = require('../services/leetcodeService');
+    const leetCodeVerification = await verifyLeetCodeUser(leetcodeUsername);
+    if (!leetCodeVerification.isValid) {
+      return res.status(400).json({
+        success: false,
+        message: leetCodeVerification.message || `The provided LeetCode profile "${leetcodeUsername}" does not exist on LeetCode. Please provide a valid profile.`
+      });
+    }
+
+    const verifiedLeetcodeUsername = leetCodeVerification.username;
+
+    // Ensure this LeetCode username is not already registered by another student
+    const existingLeetcode = await User.findOne({
+      leetcodeUsername: { $regex: new RegExp(`^${verifiedLeetcodeUsername}$`, 'i') }
+    });
+    if (existingLeetcode) {
+      return res.status(400).json({
+        success: false,
+        message: `LeetCode profile "${verifiedLeetcodeUsername}" is already linked to an existing account (${existingLeetcode.email}).`
+      });
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -256,7 +302,8 @@ const register = async (req, res) => {
       yearLevel: reqYearLevel,
       registerNumber: registerNumber || '',
       studentId: studentId || '',
-      leetcodeUsername: leetcodeUsername ? leetcodeUsername.trim() : null,
+      leetcodeUsername: verifiedLeetcodeUsername,
+      avatar: leetCodeVerification.profile?.userAvatar || '',
       isApproved: true,
       approvalStatus: 'approved'
     });
@@ -274,6 +321,9 @@ const register = async (req, res) => {
       actorEmail: newUser.email,
       action: 'USER_REGISTERED'
     });
+
+    // Automatically trigger initial LeetCode stats sync in background
+    syncUserLeetCode(newUser).catch(err => console.error('[Initial Sync Error]', err.message));
 
     res.status(201).json({
       success: true,
@@ -871,4 +921,4 @@ const resetPassword = async (req, res) => {
   }
 };
 
-module.exports = { register, getRegistrationOptions, registerInstitution, registerStaff, login, getMe, getSessions, revokeSession, forgotPassword, resetPassword };
+module.exports = { register, verifyLeetCode, getRegistrationOptions, registerInstitution, registerStaff, login, getMe, getSessions, revokeSession, forgotPassword, resetPassword };

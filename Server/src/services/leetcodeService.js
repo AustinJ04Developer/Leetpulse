@@ -93,6 +93,127 @@ const getQuestionDetails = async (titleSlug) => {
 };
 
 /**
+ * Extracts and sanitizes clean LeetCode username from full URL, partial URL, or raw handle.
+ * Handles formats like:
+ * - https://leetcode.com/u/username/
+ * - https://leetcode.com/username
+ * - https://leetcode.cn/u/username
+ * - leetcode.com/u/username
+ * - @username / username
+ */
+const extractLeetCodeUsername = (input) => {
+  if (!input || typeof input !== 'string') return '';
+  let str = input.trim();
+  if (str.startsWith('@')) str = str.slice(1);
+
+  try {
+    if (str.includes('leetcode.com') || str.includes('leetcode.cn')) {
+      if (!str.startsWith('http://') && !str.startsWith('https://')) {
+        str = 'https://' + str;
+      }
+      const url = new URL(str);
+      const parts = url.pathname.split('/').filter(Boolean);
+      if (parts[0] === 'u' && parts[1]) {
+        return parts[1].replace(/[^a-zA-Z0-9_-]/g, '');
+      }
+      if (parts[0] && !['problems', 'contest', 'discuss', 'explore', 'company', 'tag', 'circle'].includes(parts[0])) {
+        return parts[0].replace(/[^a-zA-Z0-9_-]/g, '');
+      }
+    }
+  } catch (_) {}
+
+  const urlMatch = str.match(/leetcode\.(?:com|cn)\/(?:u\/)?([a-zA-Z0-9_-]+)/i);
+  if (urlMatch && urlMatch[1]) {
+    return urlMatch[1];
+  }
+
+  return str.split('/')[0].split('?')[0].replace(/[^a-zA-Z0-9_-]/g, '');
+};
+
+/**
+ * Verifies if a LeetCode URL or username exists on LeetCode's official platform via GraphQL.
+ */
+const verifyLeetCodeUser = async (usernameOrUrl) => {
+  const username = extractLeetCodeUsername(usernameOrUrl);
+  if (!username) {
+    return { 
+      isValid: false, 
+      message: 'Please provide a valid LeetCode profile URL or username.' 
+    };
+  }
+
+  const query = `
+    query getUserProfile($username: String!) {
+      matchedUser(username: $username) {
+        username
+        profile {
+          realName
+          userAvatar
+          ranking
+          reputation
+        }
+        submitStats {
+          acSubmissionNum {
+            difficulty
+            count
+          }
+        }
+      }
+    }
+  `;
+
+  try {
+    const res = await fetch('https://leetcode.com/graphql', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Referer': `https://leetcode.com/u/${username}/`,
+        'Origin': 'https://leetcode.com'
+      },
+      body: JSON.stringify({ query, variables: { username } })
+    }).then(r => r.json());
+
+    const matched = res?.data?.matchedUser;
+    if (matched && matched.username) {
+      const acStats = matched.submitStats?.acSubmissionNum || [];
+      const totalSolved = acStats.find(s => s.difficulty === 'All')?.count || 0;
+      const easySolved = acStats.find(s => s.difficulty === 'Easy')?.count || 0;
+      const mediumSolved = acStats.find(s => s.difficulty === 'Medium')?.count || 0;
+      const hardSolved = acStats.find(s => s.difficulty === 'Hard')?.count || 0;
+
+      return {
+        isValid: true,
+        username: matched.username,
+        profile: {
+          username: matched.username,
+          realName: matched.profile?.realName || matched.username,
+          userAvatar: matched.profile?.userAvatar || '',
+          ranking: matched.profile?.ranking || 0,
+          totalSolved,
+          easySolved,
+          mediumSolved,
+          hardSolved
+        }
+      };
+    } else {
+      return {
+        isValid: false,
+        username,
+        message: `LeetCode profile for "${username}" does not exist. Please check your URL or username.`
+      };
+    }
+  } catch (err) {
+    console.error(`[LeetCode Verification Error] for ${username}:`, err.message);
+    return {
+      isValid: false,
+      username,
+      message: 'Unable to reach LeetCode servers to verify profile. Please verify your internet connection or check the username.'
+    };
+  }
+};
+
+/**
  * Executes separate LeetCode GraphQL queries in parallel for authentic, live data
  */
 const fetchRealLeetCodeData = async (username) => {
@@ -434,4 +555,10 @@ const syncUserLeetCode = async (user) => {
   }
 };
 
-module.exports = { syncUserLeetCode, fetchRealLeetCodeData, getQuestionDetails };
+module.exports = { 
+  syncUserLeetCode, 
+  fetchRealLeetCodeData, 
+  getQuestionDetails,
+  extractLeetCodeUsername,
+  verifyLeetCodeUser
+};
