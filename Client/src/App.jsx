@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 
 import Navbar from './components/Navbar';
@@ -44,11 +44,14 @@ import ReportsPage from './pages/shared/ReportsPage';
 
 const ProtectedRoute = ({ children, minLevel = 1 }) => {
   const { user, loading } = useAuth();
+  const location = useLocation();
+
   if (loading) {
     return <div className="p-8 text-center text-slate-400">Loading platform...</div>;
   }
   if (!user) {
-    return <Navigate to="/login" replace />;
+    const returnUrl = encodeURIComponent(location.pathname + location.search);
+    return <Navigate to={`/login?redirect=${returnUrl}`} replace />;
   }
   if (user.roleLevel < minLevel) {
     return <Navigate to="/dashboard" replace />;

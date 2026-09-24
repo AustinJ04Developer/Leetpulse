@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Activity, Lock, Mail, ArrowRight, Eye, EyeOff, Clock, AlertTriangle, ShieldAlert } from 'lucide-react';
 
 const Login = () => {
@@ -12,6 +12,8 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const redirectParam = searchParams.get('redirect');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -22,7 +24,11 @@ const Login = () => {
     try {
       const res = await login(email, password);
       if (res.success) {
-        navigate('/dashboard');
+        if (redirectParam) {
+          navigate(decodeURIComponent(redirectParam));
+        } else {
+          navigate('/');
+        }
       } else {
         setError(res.message || 'Login failed');
       }

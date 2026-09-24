@@ -100,7 +100,7 @@ const sendPendingApprovalNotificationEmail = async ({
   const isHod = applicantRole === 'hod';
   const roleTitle = isHod ? 'Head of Department (HOD - Level 4)' : 'Faculty Mentor (Level 3)';
   const formattedDate = registeredAt ? new Date(registeredAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : new Date().toLocaleString();
-  const baseUrl = (process.env.CLIENT_URL || 'http://localhost:5173').replace(/\/$/, '');
+  const baseUrl = (process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
 
   const mailOptions = {
     from: getFromAddress(),
@@ -222,6 +222,7 @@ const sendPendingApprovalNotificationEmail = async ({
 const sendAccountApprovedEmail = async ({ toEmail, name, role }) => {
   const transporter = createTransporter();
   const roleTitle = role === 'hod' ? 'Head of Department (HOD)' : role === 'faculty' ? 'Faculty Mentor' : 'User';
+  const baseUrl = (process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
 
   const mailOptions = {
     from: getFromAddress(),
@@ -234,7 +235,8 @@ const sendAccountApprovedEmail = async ({ toEmail, name, role }) => {
           <p style="color: #cbd5e1; font-size: 14px;">Hello <strong>${name}</strong>,</p>
           <p style="color: #cbd5e1; font-size: 14px;">Your registration request for role <strong>${roleTitle}</strong> has been approved by your administrator.</p>
           <div style="margin: 20px 0; background-color: #0f172a; border: 1px solid #10b981; padding: 16px; border-radius: 12px; text-align: center;">
-            <p style="color: #34d399; font-weight: bold; margin: 0;">You can now log in to access your LEETPULSE dashboard.</p>
+            <p style="color: #34d399; font-weight: bold; margin: 0 0 12px 0;">You can now log in to access your LEETPULSE dashboard.</p>
+            <a href="${baseUrl}/login" style="display: inline-block; background-color: #10b981; color: #0b0f19; font-weight: bold; text-decoration: none; padding: 8px 20px; border-radius: 8px; font-size: 13px;">Log In Now →</a>
           </div>
           <hr style="border: none; border-top: 1px solid #334155; margin: 20px 0;" />
           <p style="color: #64748b; font-size: 11px; text-align: center;">LEETPULSE Academic Platform</p>

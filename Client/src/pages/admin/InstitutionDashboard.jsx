@@ -35,19 +35,19 @@ const InstitutionDashboard = () => {
     setLoading(true);
     try {
       const [instRes, deptRes, stuRes, riskRes, pendingRes] = await Promise.all([
-        api.get('/institutions'),
-        api.get('/institutions/departments/list'),
-        api.get('/students?limit=100'),
-        api.get('/students/at-risk'),
+        api.get('/institutions').catch(() => ({ data: { success: false, data: [] } })),
+        api.get('/institutions/departments/list').catch(() => ({ data: { success: false, data: [] } })),
+        api.get('/students?limit=100').catch(() => ({ data: { success: false, data: [] } })),
+        api.get('/students/at-risk').catch(() => ({ data: { success: false, count: 0 } })),
         api.get('/institutions/pending-approvals').catch(() => ({ data: { success: false, data: [] } }))
       ]);
 
-      if (instRes.data.success && instRes.data.data.length > 0) {
+      if (instRes.data?.success && instRes.data?.data?.length > 0) {
         setInstitution(instRes.data.data[0]);
       }
-      if (deptRes.data.success) setDepartments(deptRes.data.data);
-      if (stuRes.data.success) setStudents(stuRes.data.data);
-      if (riskRes.data.success) setAtRiskCount(riskRes.data.count);
+      if (deptRes.data?.success) setDepartments(deptRes.data.data || []);
+      if (stuRes.data?.success) setStudents(stuRes.data.data || []);
+      if (riskRes.data?.success) setAtRiskCount(riskRes.data.count || 0);
       if (pendingRes.data?.success) setPendingCount(pendingRes.data.count || pendingRes.data.data?.length || 0);
     } catch (err) {
       console.error('Failed to load institution dashboard:', err);
