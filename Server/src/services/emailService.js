@@ -4,10 +4,21 @@ const createTransporter = () => {
   const host = process.env.SMTP_HOST || 'smtp.gmail.com';
   const port = Number(process.env.SMTP_PORT) || 587;
   const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  const rawPass = process.env.SMTP_PASS;
 
-  if (!user || !pass) {
+  if (!user || !rawPass) {
     return null;
+  }
+
+  // Google App Passwords often contain 4-character chunk spaces ('abcd efgh ijkl mnop') which break raw SMTP auth
+  const pass = rawPass.replace(/\s+/g, '');
+  const isGmail = (host && host.includes('gmail.com')) || (user && user.endsWith('@gmail.com'));
+
+  if (isGmail) {
+    return nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user, pass }
+    });
   }
 
   return nodemailer.createTransport({
@@ -73,6 +84,7 @@ const sendResetPasscodeEmail = async (toEmail, code) => {
 
 const sendPendingApprovalNotificationEmail = async ({ 
   toEmail, 
+  ccEmails,
   approverRole, 
   applicantName, 
   applicantEmail, 
@@ -92,7 +104,8 @@ const sendPendingApprovalNotificationEmail = async ({
 
   const mailOptions = {
     from: getFromAddress(),
-    to: toEmail,
+    to: Array.isArray(toEmail) ? toEmail.join(', ') : toEmail,
+    ...(ccEmails ? { cc: Array.isArray(ccEmails) ? ccEmails.join(', ') : ccEmails } : {}),
     subject: `📩 Pending ${isHod ? 'HOD' : 'Faculty'} Approval Request: ${applicantName}`,
     html: `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0b0f19; color: #f8fafc; padding: 32px 16px;">

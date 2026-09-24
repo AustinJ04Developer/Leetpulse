@@ -312,7 +312,9 @@ exports.getPendingApprovals = async (req, res) => {
   try {
     const userLevel = req.user.roleLevel || 1;
 
+    // Strict scope: ONLY Faculty (Level 3) and HOD (Level 4) require approval. Students never need approval.
     let filter = {
+      role: { $in: ['faculty', 'hod'] },
       $or: [
         { approvalStatus: 'pending' },
         { isApproved: false, approvalStatus: { $ne: 'rejected' } }
@@ -325,30 +327,22 @@ exports.getPendingApprovals = async (req, res) => {
         filter.institutionId = req.query.institutionId;
       }
     } else if (userLevel === 5) {
-      // Level 5 Institutional Admin can approve HODs, Faculty, and Students within their institution
+      // Level 5 Institutional Admin can approve HODs and Faculty within their institution
       filter.institutionId = req.user.institutionId;
-      // Cannot approve other Institutional Admins or SuperAdmins
       filter.roleLevel = { $lt: 5 };
     } else if (userLevel === 4) {
-      // Level 4 HOD can approve Faculty and Students within their department
+      // Level 4 HOD can approve Faculty within their department
       filter.institutionId = req.user.institutionId;
       if (req.user.departmentId) {
         filter.departmentId = req.user.departmentId;
       }
-      filter.role = { $in: ['faculty', 'student', 'student_rep'] };
-    } else if (userLevel === 3) {
-      // Level 3 Faculty can approve Students in their department/section
-      filter.institutionId = req.user.institutionId;
-      filter.role = 'student';
-      if (req.user.departmentId) {
-        filter.departmentId = req.user.departmentId;
-      }
+      filter.role = 'faculty';
     } else {
       return res.status(403).json({ success: false, message: 'Forbidden: Insufficient privileges to view pending approvals' });
     }
 
-    // Optional role filter (e.g. ?role=faculty or ?role=hod)
-    if (req.query.role) {
+    // Optional role filter (only 'faculty' or 'hod' allowed)
+    if (req.query.role && ['faculty', 'hod'].includes(req.query.role)) {
       filter.role = req.query.role;
     }
 

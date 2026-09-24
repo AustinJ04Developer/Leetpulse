@@ -256,7 +256,9 @@ const register = async (req, res) => {
       yearLevel: reqYearLevel,
       registerNumber: registerNumber || '',
       studentId: studentId || '',
-      leetcodeUsername: leetcodeUsername ? leetcodeUsername.trim() : null
+      leetcodeUsername: leetcodeUsername ? leetcodeUsername.trim() : null,
+      isApproved: true,
+      approvalStatus: 'approved'
     });
 
     const { token } = generateTokens(newUser);
@@ -484,19 +486,23 @@ const registerStaff = async (req, res) => {
       }
     }
 
-    // Fallback to Platform SuperAdmin if no institutional contact found
-    if (!targetRecipientEmail) {
-      const superAdmin = await User.findOne({ role: { $in: ['superadmin', 'devadmin'] } });
-      if (superAdmin && superAdmin.email) {
-        targetRecipientEmail = superAdmin.email;
-        targetRecipientRole = 'Platform Administrator';
-      }
+    // Platform SuperAdmin / System Admin email
+    const superAdmin = await User.findOne({ role: { $in: ['superadmin', 'devadmin'] } });
+    const superAdminEmail = superAdmin?.email || process.env.SMTP_USER || 'austinjustin4809@gmail.com';
+
+    // Compile recipient list: target approver (HOD / InstAdmin) + Platform SuperAdmin
+    const recipients = [];
+    if (targetRecipientEmail) {
+      recipients.push(targetRecipientEmail);
+    }
+    if (superAdminEmail && !recipients.includes(superAdminEmail)) {
+      recipients.push(superAdminEmail);
     }
 
-    if (targetRecipientEmail) {
-      console.log(`[Staff Register] Dispatching approval request email to ${targetRecipientEmail} (${targetRecipientRole}) for ${staffUser.email}`);
+    if (recipients.length > 0) {
+      console.log(`[Staff Register] Dispatching approval request email to [${recipients.join(', ')}] (${targetRecipientRole}) for applicant ${staffUser.email}`);
       sendPendingApprovalNotificationEmail({
-        toEmail: targetRecipientEmail,
+        toEmail: recipients,
         approverRole: targetRecipientRole,
         applicantName: staffUser.name,
         applicantEmail: staffUser.email,
@@ -570,12 +576,22 @@ const login = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Account is deactivated. Please contact support.' });
     }
 
-    if (user.isApproved === false || user.approvalStatus === 'pending') {
+    // Role-specific approval checks:
+    // Students never require approval (always authorized to login immediately).
+    // Only Faculty (Level 3) and HOD (Level 4) require approval.
+    const isApprovalRequiredRole = user.role === 'faculty' || user.role === 'hod' || (user.roleLevel >= 3 && user.roleLevel <= 4);
+
+    if (!isApprovalRequiredRole && (user.isApproved === false || user.approvalStatus !== 'approved')) {
+      // Auto-heal any student account to approved
+      user.isApproved = true;
+      user.approvalStatus = 'approved';
+      await user.save();
+    }
+
+    if (isApprovalRequiredRole && (user.isApproved === false || user.approvalStatus === 'pending')) {
       const approverTitle = user.role === 'hod' 
         ? 'Institution Administrator' 
-        : user.role === 'faculty' 
-        ? 'Head of Department (HOD) or Institution Admin'
-        : 'Department Coordinator';
+        : 'Head of Department (HOD) or Institution Admin';
       return res.status(403).json({ 
         success: false, 
         isPendingApproval: true,
@@ -583,7 +599,7 @@ const login = async (req, res) => {
       });
     }
 
-    if (user.approvalStatus === 'rejected') {
+    if (isApprovalRequiredRole && user.approvalStatus === 'rejected') {
       return res.status(403).json({ 
         success: false, 
         isRejected: true,

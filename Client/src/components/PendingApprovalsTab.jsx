@@ -116,16 +116,14 @@ const PendingApprovalsTab = ({ userRoleLevel = 5, onCountChange }) => {
     }
   };
 
-  // Role counts
+  // Role counts (Approvals are strictly for HOD and Faculty)
   const hodCount = pendingUsers.filter(u => u.role === 'hod').length;
   const facultyCount = pendingUsers.filter(u => u.role === 'faculty').length;
-  const studentCount = pendingUsers.filter(u => u.role === 'student' || u.role === 'student_rep').length;
 
   // Filtered users
   const filteredUsers = pendingUsers.filter(user => {
     if (selectedRoleFilter === 'hod' && user.role !== 'hod') return false;
     if (selectedRoleFilter === 'faculty' && user.role !== 'faculty') return false;
-    if (selectedRoleFilter === 'student' && user.role !== 'student' && user.role !== 'student_rep') return false;
 
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
@@ -159,7 +157,7 @@ const PendingApprovalsTab = ({ userRoleLevel = 5, onCountChange }) => {
               )}
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              Review and authorize registrations for Faculty and Head of Department (HOD) accounts. Once approved, members can immediately log in to access the platform.
+              Review and authorize registrations for Faculty and Head of Department (HOD) accounts. Students are auto-approved upon registration and do not require manual administrative approval.
             </p>
           </div>
         </div>
@@ -241,22 +239,6 @@ const PendingApprovalsTab = ({ userRoleLevel = 5, onCountChange }) => {
             <span>Faculty Requests</span>
             <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-950/60 font-mono">
               {facultyCount}
-            </span>
-          </button>
-
-          {/* Student Filter */}
-          <button
-            onClick={() => setSelectedRoleFilter('student')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-              selectedRoleFilter === 'student'
-                ? 'bg-sky-600 text-white shadow-md shadow-sky-600/20'
-                : 'bg-slate-800/80 text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Users className="w-3.5 h-3.5 text-sky-400" />
-            <span>Students</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-950/60 font-mono">
-              {studentCount}
             </span>
           </button>
         </div>
