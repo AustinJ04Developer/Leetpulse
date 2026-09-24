@@ -310,20 +310,50 @@ exports.deleteSection = async (req, res) => {
 // --- APPROVAL WORKFLOW MANAGEMENT ---
 exports.getPendingApprovals = async (req, res) => {
   try {
-    const instId = req.user.institutionId;
-    let filter = { institutionId: instId, approvalStatus: 'pending' };
+    const userLevel = req.user.roleLevel || 1;
 
-    // HOD (Level 4) can approve staff & students in their department
-    if (req.user.roleLevel === 4 && req.user.departmentId) {
-      filter.departmentId = req.user.departmentId;
-    }
-    // Faculty/Staff (Level 3) can approve students in their section/department
-    if (req.user.roleLevel === 3) {
+    let filter = {
+      $or: [
+        { approvalStatus: 'pending' },
+        { isApproved: false, approvalStatus: { $ne: 'rejected' } }
+      ]
+    };
+
+    if (userLevel >= 6) {
+      // Level 6 SuperAdmin has global platform view across all institutions
+      if (req.query.institutionId) {
+        filter.institutionId = req.query.institutionId;
+      }
+    } else if (userLevel === 5) {
+      // Level 5 Institutional Admin can approve HODs, Faculty, and Students within their institution
+      filter.institutionId = req.user.institutionId;
+      // Cannot approve other Institutional Admins or SuperAdmins
+      filter.roleLevel = { $lt: 5 };
+    } else if (userLevel === 4) {
+      // Level 4 HOD can approve Faculty and Students within their department
+      filter.institutionId = req.user.institutionId;
+      if (req.user.departmentId) {
+        filter.departmentId = req.user.departmentId;
+      }
+      filter.role = { $in: ['faculty', 'student', 'student_rep'] };
+    } else if (userLevel === 3) {
+      // Level 3 Faculty can approve Students in their department/section
+      filter.institutionId = req.user.institutionId;
       filter.role = 'student';
-      if (req.user.departmentId) filter.departmentId = req.user.departmentId;
+      if (req.user.departmentId) {
+        filter.departmentId = req.user.departmentId;
+      }
+    } else {
+      return res.status(403).json({ success: false, message: 'Forbidden: Insufficient privileges to view pending approvals' });
+    }
+
+    // Optional role filter (e.g. ?role=faculty or ?role=hod)
+    if (req.query.role) {
+      filter.role = req.query.role;
     }
 
     const pendingUsers = await User.find(filter)
+      .populate('institutionId', 'name code')
       .populate('departmentId', 'name code')
       .populate('sectionId', 'name')
       .sort({ createdAt: -1 });
@@ -342,25 +372,39 @@ exports.approveUser = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
+    const userLevel = req.user.roleLevel || 1;
+
     // Role-level authority check
-    if (req.user.roleLevel < 5) {
-      if (req.user.roleLevel === 4) {
-        if (targetUser.roleLevel >= 4 || targetUser.departmentId?.toString() !== req.user.departmentId?.toString()) {
-          return res.status(403).json({ success: false, message: 'Forbidden: HOD can only approve Staff and Students in their department' });
+    if (userLevel < 5) {
+      if (userLevel === 4) {
+        // HOD can approve Faculty and Students in their department
+        const sameDept = !targetUser.departmentId || !req.user.departmentId || targetUser.departmentId.toString() === req.user.departmentId.toString();
+        if (targetUser.roleLevel >= 4 || !sameDept) {
+          return res.status(403).json({ success: false, message: 'Forbidden: HOD can only approve Faculty and Students in their department' });
         }
-      } else if (req.user.roleLevel === 3) {
+      } else if (userLevel === 3) {
         if (targetUser.role !== 'student') {
           return res.status(403).json({ success: false, message: 'Forbidden: Staff can only approve Students' });
         }
       } else {
         return res.status(403).json({ success: false, message: 'Forbidden: Insufficient privileges' });
       }
+    } else if (userLevel === 5) {
+      // Institutional admin must match institution
+      if (targetUser.institutionId && req.user.institutionId && targetUser.institutionId.toString() !== req.user.institutionId.toString()) {
+        return res.status(403).json({ success: false, message: 'Forbidden: Cannot approve user from a different institution' });
+      }
+      if (targetUser.roleLevel >= 5) {
+        return res.status(403).json({ success: false, message: 'Forbidden: Insufficient privileges to approve this role level' });
+      }
     }
+    // Level 6 (SuperAdmin) has global approval rights
 
     targetUser.isApproved = true;
     targetUser.approvalStatus = 'approved';
     targetUser.approvedBy = req.user._id;
     targetUser.approvedAt = new Date();
+    targetUser.isActive = true;
     await targetUser.save();
 
     // Link HOD to Department if role is HOD
@@ -381,7 +425,23 @@ exports.approveUser = async (req, res) => {
       metadata: { targetUserId: targetUser._id, role: targetUser.role }
     });
 
-    res.json({ success: true, message: `${targetUser.name}'s account has been approved successfully!`, data: targetUser });
+    // Notify user via email
+    try {
+      const { sendAccountApprovedEmail } = require('../services/emailService');
+      if (sendAccountApprovedEmail) {
+        sendAccountApprovedEmail({
+          toEmail: targetUser.email,
+          name: targetUser.name,
+          role: targetUser.role
+        }).catch(err => console.error('[Approve User] Email notification failed:', err.message));
+      }
+    } catch (_) {}
+
+    res.json({ 
+      success: true, 
+      message: `${targetUser.name}'s (${targetUser.role.toUpperCase()}) account has been approved successfully!`, 
+      data: targetUser 
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -395,8 +455,21 @@ exports.rejectUser = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    if (req.user.roleLevel < 5 && req.user.roleLevel <= targetUser.roleLevel) {
-      return res.status(403).json({ success: false, message: 'Forbidden: Insufficient privileges to reject this user' });
+    const userLevel = req.user.roleLevel || 1;
+
+    if (userLevel < 5) {
+      if (userLevel === 4) {
+        const sameDept = !targetUser.departmentId || !req.user.departmentId || targetUser.departmentId.toString() === req.user.departmentId.toString();
+        if (targetUser.roleLevel >= 4 || !sameDept) {
+          return res.status(403).json({ success: false, message: 'Forbidden: Insufficient privileges to reject this user' });
+        }
+      } else {
+        return res.status(403).json({ success: false, message: 'Forbidden: Insufficient privileges to reject this user' });
+      }
+    } else if (userLevel === 5) {
+      if ((targetUser.institutionId && req.user.institutionId && targetUser.institutionId.toString() !== req.user.institutionId.toString()) || targetUser.roleLevel >= 5) {
+        return res.status(403).json({ success: false, message: 'Forbidden: Insufficient privileges to reject this user' });
+      }
     }
 
     targetUser.isApproved = false;
@@ -412,9 +485,25 @@ exports.rejectUser = async (req, res) => {
       metadata: { targetUserId: targetUser._id, role: targetUser.role }
     });
 
-    res.json({ success: true, message: `${targetUser.name}'s registration has been rejected.`, data: targetUser });
+    try {
+      const { sendAccountRejectedEmail } = require('../services/emailService');
+      if (sendAccountRejectedEmail) {
+        sendAccountRejectedEmail({
+          toEmail: targetUser.email,
+          name: targetUser.name,
+          role: targetUser.role
+        }).catch(err => console.error('[Reject User] Email notification failed:', err.message));
+      }
+    } catch (_) {}
+
+    res.json({ 
+      success: true, 
+      message: `${targetUser.name}'s registration has been rejected.`, 
+      data: targetUser 
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
 

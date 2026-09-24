@@ -391,13 +391,9 @@ const registerStaff = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Institution not found.' });
     }
 
-    // Verify Staff Security Passcode if provided
-    const validPasscode = institution.staffPasscode || 'STAFF2026';
-    const isPasscodeValid = staffPasscode && staffPasscode.trim() === validPasscode.trim();
-
-    // If valid passcode is provided, auto-approve; otherwise set pending approval
-    const isApproved = Boolean(isPasscodeValid);
-    const approvalStatus = isApproved ? 'approved' : 'pending';
+    // When faculty or HOD register, account must be stored in DB with pending approval
+    const isApproved = false;
+    const approvalStatus = 'pending';
 
     const normalizedEmail = email.toLowerCase().trim();
     const existingUser = await User.findOne({ email: normalizedEmail });
@@ -423,94 +419,103 @@ const registerStaff = async (req, res) => {
       sectionId: sectionId || null,
       designation: designation || (finalRole === 'hod' ? 'Head of Department' : 'Faculty Mentor'),
       studentId: staffId || '',
-      isApproved,
-      approvalStatus
-    });
-
-    if (isApproved) {
-      if (finalRole === 'hod' && departmentId) {
-        await Department.findByIdAndUpdate(departmentId, { hodId: staffUser._id });
-      }
-      if (finalRole === 'faculty' && sectionId) {
-        await Section.findByIdAndUpdate(sectionId, { facultyId: staffUser._id });
-      }
-    }
-
-    const { token } = generateTokens(staffUser);
-
-    await Session.create({
-      userId: staffUser._id,
-      token,
-      device: req.headers['user-agent'] || 'Browser'
+      isApproved: false,
+      approvalStatus: 'pending'
     });
 
     await AuditLog.create({
       actorId: staffUser._id,
       actorEmail: staffUser.email,
       action: 'STAFF_REGISTERED',
-      metadata: { role: finalRole, departmentId, isApproved }
+      metadata: { role: finalRole, departmentId, isApproved: false }
     });
 
-    // Send email notification for pending approval
-    if (!isApproved) {
-      const { sendPendingApprovalNotificationEmail } = require('../services/emailService');
-      let targetRecipientEmail = null;
-      let targetRecipientRole = 'Institution Administrator';
+    // Send email notification with applicant profile of approval to the appropriate HOD or Admin
+    const { sendPendingApprovalNotificationEmail } = require('../services/emailService');
+    let targetRecipientEmail = null;
+    let targetRecipientRole = 'Institution Administrator';
+    let deptName = '';
 
-      if (finalRole === 'hod') {
-        // HOD Registration -> Notify Institutional Admin
+    if (departmentId) {
+      const dept = await Department.findById(departmentId);
+      if (dept) deptName = `${dept.name} (${dept.code || ''})`;
+    }
+
+    if (finalRole === 'faculty') {
+      // Faculty Registration -> Send to appropriate Head of Department (HOD)
+      let hodUser = null;
+      if (departmentId) {
+        const deptObj = await Department.findById(departmentId).populate('hodId');
+        if (deptObj && deptObj.hodId && deptObj.hodId.email) {
+          hodUser = deptObj.hodId;
+        } else {
+          hodUser = await User.findOne({ 
+            institutionId: institution._id, 
+            departmentId: departmentId, 
+            role: 'hod',
+            isActive: true 
+          });
+        }
+      }
+
+      if (hodUser && hodUser.email) {
+        targetRecipientEmail = hodUser.email;
+        targetRecipientRole = `Head of Department (${deptName || 'Department'})`;
+      } else {
+        // Fallback to Institutional Admin if department has no assigned HOD yet
         const instAdmin = await User.findOne({ institutionId: institution._id, role: 'institution_admin' });
         if (instAdmin && instAdmin.email) {
           targetRecipientEmail = instAdmin.email;
-        } else {
-          targetRecipientEmail = institution.contactEmail || null;
-        }
-      } else {
-        // Faculty/Staff Registration -> Notify Head of Department (HOD)
-        let deptObj = null;
-        if (departmentId) {
-          deptObj = await Department.findById(departmentId).populate('hodId');
-        }
-
-        if (deptObj && deptObj.hodId && deptObj.hodId.email) {
-          targetRecipientEmail = deptObj.hodId.email;
-          targetRecipientRole = `Head of Department (${deptObj.name})`;
-        } else {
-          // Fallback to Institutional Admin if department has no assigned HOD yet
-          const instAdmin = await User.findOne({ institutionId: institution._id, role: 'institution_admin' });
-          if (instAdmin && instAdmin.email) {
-            targetRecipientEmail = instAdmin.email;
-          } else {
-            targetRecipientEmail = institution.contactEmail || null;
-          }
+          targetRecipientRole = `Institutional Administrator (${institution.name})`;
+        } else if (institution.contactEmail) {
+          targetRecipientEmail = institution.contactEmail;
+          targetRecipientRole = `Institution Management (${institution.name})`;
         }
       }
-
-      if (targetRecipientEmail) {
-        let deptName = '';
-        if (departmentId) {
-          const dept = await Department.findById(departmentId);
-          if (dept) deptName = dept.name;
-        }
-        sendPendingApprovalNotificationEmail({
-          toEmail: targetRecipientEmail,
-          approverRole: targetRecipientRole,
-          applicantName: staffUser.name,
-          applicantEmail: staffUser.email,
-          applicantRole: finalRole,
-          departmentName: deptName,
-          institutionName: institution.name
-        }).catch(err => console.error('Failed to send pending approval email:', err));
+    } else {
+      // HOD Registration -> Send request to Institutional Administrator
+      const instAdmin = await User.findOne({ institutionId: institution._id, role: 'institution_admin' });
+      if (instAdmin && instAdmin.email) {
+        targetRecipientEmail = instAdmin.email;
+        targetRecipientRole = `Institutional Administrator (${institution.name})`;
+      } else if (institution.contactEmail) {
+        targetRecipientEmail = institution.contactEmail;
+        targetRecipientRole = `Institution Management (${institution.name})`;
       }
+    }
+
+    // Fallback to Platform SuperAdmin if no institutional contact found
+    if (!targetRecipientEmail) {
+      const superAdmin = await User.findOne({ role: { $in: ['superadmin', 'devadmin'] } });
+      if (superAdmin && superAdmin.email) {
+        targetRecipientEmail = superAdmin.email;
+        targetRecipientRole = 'Platform Administrator';
+      }
+    }
+
+    if (targetRecipientEmail) {
+      console.log(`[Staff Register] Dispatching approval request email to ${targetRecipientEmail} (${targetRecipientRole}) for ${staffUser.email}`);
+      sendPendingApprovalNotificationEmail({
+        toEmail: targetRecipientEmail,
+        approverRole: targetRecipientRole,
+        applicantName: staffUser.name,
+        applicantEmail: staffUser.email,
+        applicantRole: finalRole,
+        departmentName: deptName,
+        institutionName: institution.name,
+        designation: staffUser.designation,
+        staffId: staffUser.studentId,
+        registeredAt: staffUser.createdAt
+      }).catch(err => console.error('[Staff Register] Failed to send pending approval email:', err));
+    } else {
+      console.warn(`[Staff Register] No approver email found for applicant ${staffUser.email} (Institution: ${institution.name})`);
     }
 
     res.status(201).json({
       success: true,
-      message: isApproved 
-        ? `${finalRole.toUpperCase()} account registered successfully!` 
-        : `${finalRole.toUpperCase()} registration submitted. Account is pending approval by your Institution Admin or HOD.`,
-      isApproved,
-      token,
+      message: `${finalRole === 'hod' ? 'Head of Department (HOD)' : 'Faculty'} registration submitted. Account is pending approval by your ${finalRole === 'hod' ? 'Institution Administrator' : 'Head of Department'}.`,
+      isApproved: false,
+      token: null,
       user: {
         id: staffUser._id,
         name: staffUser.name,
@@ -520,8 +525,8 @@ const registerStaff = async (req, res) => {
         institutionId: staffUser.institutionId,
         departmentId: staffUser.departmentId,
         sectionId: staffUser.sectionId,
-        isApproved: staffUser.isApproved,
-        approvalStatus: staffUser.approvalStatus
+        isApproved: false,
+        approvalStatus: 'pending'
       }
     });
   } catch (err) {
@@ -562,15 +567,28 @@ const login = async (req, res) => {
     }
 
     if (!user.isActive) {
-      return res.status(403).json({ success: false, message: 'Account is deactivated' });
+      return res.status(403).json({ success: false, message: 'Account is deactivated. Please contact support.' });
     }
 
     if (user.isApproved === false || user.approvalStatus === 'pending') {
-      return res.status(403).json({ success: false, message: 'Account registration is pending approval by your Institution Admin or HOD.' });
+      const approverTitle = user.role === 'hod' 
+        ? 'Institution Administrator' 
+        : user.role === 'faculty' 
+        ? 'Head of Department (HOD) or Institution Admin'
+        : 'Department Coordinator';
+      return res.status(403).json({ 
+        success: false, 
+        isPendingApproval: true,
+        message: `Account registration is pending approval by your ${approverTitle}. You will be able to log in once your account has been approved.` 
+      });
     }
 
     if (user.approvalStatus === 'rejected') {
-      return res.status(403).json({ success: false, message: 'Account registration has been rejected. Contact your Institution Admin.' });
+      return res.status(403).json({ 
+        success: false, 
+        isRejected: true,
+        message: 'Account registration has been declined. Please contact your Institution Administrator.' 
+      });
     }
 
     user.lastActive = new Date();

@@ -19,6 +19,7 @@ import {
   Layers,
   GraduationCap,
   Download,
+  ShieldAlert,
   X
 } from 'lucide-react';
 
@@ -51,6 +52,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const facultyNav = [
     { name: 'Faculty Dashboard', path: '/faculty/dashboard', icon: LayoutDashboard },
     ...(hasLeetCode ? [{ name: 'My Personal Coding', path: '/dashboard', icon: Activity }] : []),
+    { name: 'Role Approvals', path: '/faculty/dashboard?tab=approvals', icon: ShieldAlert },
     { name: 'Assigned Students', path: '/admin/students', icon: Users },
     { name: 'Assign Targets', path: '/goals', icon: Target },
     { name: 'At-Risk Students', path: '/admin/at-risk', icon: AlertTriangle },
@@ -59,6 +61,7 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   const hodNav = [
     { name: 'HOD Overview', path: '/institution/dashboard', icon: Building2 },
+    { name: 'Role Approvals', path: '/institution/dashboard?tab=approvals', icon: ShieldAlert },
     ...(hasLeetCode ? [{ name: 'My Personal Coding', path: '/dashboard', icon: Activity }] : []),
     { name: 'Department Batches', path: '/institution/hierarchy', icon: Layers },
     { name: 'Department Students', path: '/admin/students', icon: GraduationCap },
@@ -69,6 +72,7 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   const instAdminNav = [
     { name: 'Institution Overview', path: '/institution/dashboard', icon: Building2 },
+    { name: 'Role Approvals', path: '/institution/dashboard?tab=approvals', icon: ShieldAlert },
     { name: 'Institutional Leaderboard', path: '/leaderboard', icon: Trophy },
     { name: 'Daily Progress & Heatmaps', path: '/user-progress', icon: Calendar },
     ...(hasLeetCode ? [{ name: 'My Personal Coding', path: '/dashboard', icon: Activity }] : []),
@@ -80,6 +84,7 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   const superAdminNav = [
     { name: 'Platform Overview', path: '/superadmin/analytics', icon: Building2 },
+    { name: 'Role Approvals', path: '/superadmin/analytics?tab=approvals', icon: ShieldAlert },
     { name: 'All Institutions', path: '/institution/dashboard', icon: Layers },
     { name: 'System Health', path: '/devadmin/health', icon: Activity },
     { name: 'Feature Flags', path: '/devadmin/feature-flags', icon: Sliders },

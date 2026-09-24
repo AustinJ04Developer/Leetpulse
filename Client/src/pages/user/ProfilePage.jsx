@@ -1,18 +1,33 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import UserAvatar from '../../components/UserAvatar';
 import RoleBadge from '../../components/RoleBadge';
+import PendingApprovalsTab from '../../components/PendingApprovalsTab';
 import { 
   User, Code, Save, CheckCircle2, ShieldCheck, Image, GraduationCap, Building, 
   Calendar, Hash, Phone, Briefcase, Award, MapPin, Globe, Linkedin, Github, 
-  RefreshCw, Sparkles, Layers, BookOpen, UserCheck, AlertCircle
+  RefreshCw, Sparkles, Layers, BookOpen, UserCheck, AlertCircle, ShieldAlert
 } from 'lucide-react';
 
 const ProfilePage = () => {
   const { user, refreshUser } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabQuery = searchParams.get('tab');
   
-  const [activeTab, setActiveTab] = useState('general'); // 'general' | 'role_details' | 'integrations'
+  const [activeTab, setActiveTab] = useState(tabQuery || 'general'); // 'general' | 'role_details' | 'integrations' | 'approvals'
+
+  useEffect(() => {
+    if (tabQuery) {
+      setActiveTab(tabQuery);
+    }
+  }, [tabQuery]);
+
+  const handleTabChange = (newTab) => {
+    setActiveTab(newTab);
+    setSearchParams({ tab: newTab });
+  };
 
   // General & Contact Info
   const [name, setName] = useState(user?.name || '');
@@ -275,11 +290,11 @@ const ProfilePage = () => {
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex p-1 rounded-2xl bg-slate-900 border border-slate-800">
+        <div className="flex p-1 rounded-2xl bg-slate-900 border border-slate-800 gap-1 overflow-x-auto">
           <button
             type="button"
-            onClick={() => setActiveTab('general')}
-            className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+            onClick={() => handleTabChange('general')}
+            className={`flex-1 min-w-[120px] py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
               activeTab === 'general' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
             }`}
           >
@@ -289,8 +304,8 @@ const ProfilePage = () => {
 
           <button
             type="button"
-            onClick={() => setActiveTab('role_details')}
-            className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+            onClick={() => handleTabChange('role_details')}
+            className={`flex-1 min-w-[120px] py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
               activeTab === 'role_details' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
             }`}
           >
@@ -300,20 +315,39 @@ const ProfilePage = () => {
 
           <button
             type="button"
-            onClick={() => setActiveTab('integrations')}
-            className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+            onClick={() => handleTabChange('integrations')}
+            className={`flex-1 min-w-[120px] py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
               activeTab === 'integrations' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
             }`}
           >
             <Code className="w-4 h-4" />
             <span>LeetCode & Security</span>
           </button>
+
+          {user?.roleLevel >= 4 && (
+            <button
+              type="button"
+              onClick={() => handleTabChange('approvals')}
+              className={`flex-1 min-w-[130px] py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                activeTab === 'approvals' ? 'bg-amber-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <ShieldAlert className="w-4 h-4 text-amber-400" />
+              <span>Role Approvals</span>
+            </button>
+          )}
         </div>
 
-        {/* FORM CONTAINER */}
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* TAB 1: GENERAL & PERSONAL INFO */}
-          {activeTab === 'general' && (
+        {/* TAB: APPROVALS FOR HOD / ADMIN */}
+        {activeTab === 'approvals' ? (
+          <div className="pt-2">
+            <PendingApprovalsTab userRoleLevel={user?.roleLevel} />
+          </div>
+        ) : (
+          /* FORM CONTAINER */
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* TAB 1: GENERAL & PERSONAL INFO */}
+            {activeTab === 'general' && (
             <div className="space-y-4 animate-fadeIn">
               <h3 className="text-xs font-extrabold uppercase tracking-wider text-indigo-400 flex items-center gap-2">
                 <User className="w-4 h-4" />
@@ -846,7 +880,8 @@ const ProfilePage = () => {
             </button>
           </div>
         </form>
-      </div>
+      )}
+    </div>
     </div>
   );
 };

@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
-import { Activity, Lock, Mail, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { Activity, Lock, Mail, ArrowRight, Eye, EyeOff, Clock, AlertTriangle, ShieldAlert } from 'lucide-react';
 
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [isPendingApproval, setIsPendingApproval] = useState(false);
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -15,6 +16,7 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setIsPendingApproval(false);
     setLoading(true);
 
     try {
@@ -25,7 +27,10 @@ const Login = () => {
         setError(res.message || 'Login failed');
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Login error occurred');
+      const msg = err.response?.data?.message || 'Login error occurred';
+      const pending = err.response?.data?.isPendingApproval || msg.toLowerCase().includes('pending approval');
+      setIsPendingApproval(Boolean(pending));
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -46,7 +51,18 @@ const Login = () => {
           <p className="text-xs text-slate-400 mt-1 font-semibold">Real-Time LeetCode Monitoring Platform</p>
         </div>
 
-        {error && (
+        {isPendingApproval ? (
+          <div className="mb-5 p-4 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-3">
+            <Clock className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <h4 className="font-bold text-amber-200 text-sm">Account Pending Approval</h4>
+              <p className="mt-1 text-amber-300/90 leading-relaxed">{error}</p>
+              <div className="mt-2 text-[11px] text-amber-400/80 font-medium">
+                💡 A notification has been sent to your Department HOD and Administrator. Once approved, you can return here to log in.
+              </div>
+            </div>
+          </div>
+        ) : error && (
           <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-medium text-center">
             {error}
           </div>

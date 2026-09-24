@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
 import StatCard from '../../components/StatCard';
 import UserProgressPage from '../shared/UserProgressPage';
+import PendingApprovalsTab from '../../components/PendingApprovalsTab';
 import { 
   Building2, 
   Users, 
@@ -14,13 +16,19 @@ import {
   Sliders, 
   Save, 
   BarChart2,
-  PieChart as PieIcon
+  PieChart as PieIcon,
+  ShieldAlert,
+  Calendar,
+  LayoutDashboard
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 const SuperAdminDashboard = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') || 'analytics'; // 'analytics' | 'approvals' | 'announcements' | 'branding' | 'progress'
 
   const [data, setData] = useState(null);
+  const [pendingCount, setPendingCount] = useState(0);
   const [announcementTitle, setAnnouncementTitle] = useState('');
   const [announcementMsg, setAnnouncementMsg] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
@@ -39,7 +47,11 @@ const SuperAdminDashboard = () => {
 
   const loadOrgAnalytics = async () => {
     try {
-      const res = await api.get('/superadmin/org-analytics');
+      const [res, pendingRes] = await Promise.all([
+        api.get('/superadmin/org-analytics'),
+        api.get('/institutions/pending-approvals').catch(() => ({ data: { success: false, data: [] } }))
+      ]);
+
       if (res.data.success) {
         setData(res.data);
         if (res.data.organization) {
@@ -49,6 +61,10 @@ const SuperAdminDashboard = () => {
           setPlan(org.plan || 'Enterprise');
         }
       }
+
+      if (pendingRes.data?.success) {
+        setPendingCount(pendingRes.data.count || pendingRes.data.data?.length || 0);
+      }
     } catch (err) {
       console.error(err);
     }
@@ -57,6 +73,10 @@ const SuperAdminDashboard = () => {
   useEffect(() => {
     loadOrgAnalytics();
   }, []);
+
+  const handleTabChange = (tabName) => {
+    setSearchParams({ tab: tabName });
+  };
 
   const handleBroadcast = async (e) => {
     e.preventDefault();
@@ -135,7 +155,7 @@ const SuperAdminDashboard = () => {
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-1">
-              Organization-wide oversight, cohort performance telemetry, admin staff management & global announcements
+              Organization-wide oversight, institutional approvals, cohort performance telemetry & system governance
             </p>
           </div>
 
@@ -158,73 +178,183 @@ const SuperAdminDashboard = () => {
         </div>
       )}
 
-      {/* Top Stat Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          title="Total Organization Users"
-          value={m.totalUsers || 0}
-          subtitle={`Across ${m.totalGroups || 0} active cohorts`}
-          icon={Users}
-          color="indigo"
-          badgeText="Full org capacity"
-        />
+      {/* Super Admin Tab Bar */}
+      <div className="flex bg-slate-900/80 p-1.5 rounded-2xl border border-slate-800 gap-1 overflow-x-auto">
+        <button
+          onClick={() => handleTabChange('analytics')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
+            activeTab === 'analytics'
+              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+          }`}
+        >
+          <BarChart2 className="w-4 h-4" />
+          <span>Platform Overview</span>
+        </button>
 
-        <StatCard
-          title="Total Org Solves"
-          value={(m.totalSolvedOrg || 0).toLocaleString()}
-          subtitle={`Easy: ${m.totalEasyOrg || 0} | Med: ${m.totalMediumOrg || 0}`}
-          icon={Trophy}
-          color="emerald"
-          badgeText="Platform problem solved total"
-        />
+        <button
+          onClick={() => handleTabChange('approvals')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 relative ${
+            activeTab === 'approvals'
+              ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/25'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+          }`}
+        >
+          <ShieldAlert className="w-4 h-4 text-amber-400" />
+          <span>Role Approvals & Login Requests</span>
+          {pendingCount > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-400 text-slate-950 animate-pulse">
+              {pendingCount}
+            </span>
+          )}
+        </button>
 
-        <StatCard
-          title="Avg Cohort Streak"
-          value={`${m.avgStreak || 0} Days`}
-          subtitle="Cohort consistency index"
-          icon={Flame}
-          color="amber"
-          badgeText="Healthy engagement"
-        />
+        <button
+          onClick={() => handleTabChange('announcements')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
+            activeTab === 'announcements'
+              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+          }`}
+        >
+          <Send className="w-4 h-4" />
+          <span>Announcements</span>
+        </button>
 
-        <StatCard
-          title="Active Admins"
-          value={m.totalAdmins || 0}
-          subtitle="Level 2 cohort admins"
-          icon={ShieldCheck}
-          color="purple"
-          badgeText="Administrative staff"
-        />
+        <button
+          onClick={() => handleTabChange('branding')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
+            activeTab === 'branding'
+              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+          }`}
+        >
+          <Sliders className="w-4 h-4" />
+          <span>Branding & Billing</span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('progress')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
+            activeTab === 'progress'
+              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+          }`}
+        >
+          <Calendar className="w-4 h-4" />
+          <span>Daily Progress Board</span>
+        </button>
       </div>
 
-      {/* Analytics Chart & Announcements */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Org Solve Difficulty Chart */}
-        <div className="glass-card rounded-3xl p-6 border border-slate-800 flex flex-col justify-between">
-          <div className="mb-4">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <BarChart2 className="w-4 h-4 text-indigo-400" /> Org-Wide Solves by Difficulty
-            </h3>
-            <p className="text-xs text-slate-400">Aggregate metrics across all active cohorts</p>
+      {/* TAB 1: EXECUTIVE ANALYTICS */}
+      {activeTab === 'analytics' && (
+        <div className="space-y-6">
+          {/* Top Stat Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatCard
+              title="Total Organization Users"
+              value={m.totalUsers || 0}
+              subtitle={`Across ${m.totalGroups || 0} active cohorts`}
+              icon={Users}
+              color="indigo"
+              badgeText="Full org capacity"
+            />
+
+            <div 
+              onClick={() => handleTabChange('approvals')}
+              className="cursor-pointer transition-transform hover:scale-[1.02]"
+            >
+              <StatCard
+                title="Pending Role Approvals"
+                value={pendingCount}
+                subtitle="Faculty & HOD Requests"
+                icon={ShieldAlert}
+                color="amber"
+                badgeText={pendingCount > 0 ? "Action Required" : "All Clear"}
+              />
+            </div>
+
+            <StatCard
+              title="Total Org Solves"
+              value={(m.totalSolvedOrg || 0).toLocaleString()}
+              subtitle={`Easy: ${m.totalEasyOrg || 0} | Med: ${m.totalMediumOrg || 0}`}
+              icon={Trophy}
+              color="emerald"
+              badgeText="Platform problem solved total"
+            />
+
+            <StatCard
+              title="Avg Cohort Streak"
+              value={`${m.avgStreak || 0} Days`}
+              subtitle="Cohort consistency index"
+              icon={Flame}
+              color="purple"
+              badgeText="Healthy engagement"
+            />
           </div>
 
-          <div className="w-full h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData}>
-                <XAxis dataKey="difficulty" stroke="#94a3b8" tick={{ fill: '#94a3b8', fontSize: 11 }} />
-                <YAxis stroke="#475569" />
-                <Tooltip contentStyle={{ backgroundColor: '#111827', borderColor: '#374151', borderRadius: '0.75rem', color: '#fff' }} />
-                <Bar dataKey="count" radius={[8, 8, 0, 0]}>
-                  {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+          {/* Pending Approval notice for Super Admin */}
+          {pendingCount > 0 && (
+            <div 
+              onClick={() => handleTabChange('approvals')}
+              className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/20 via-amber-500/10 to-transparent border border-amber-500/40 flex items-center justify-between cursor-pointer hover:border-amber-400 transition-all group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-bold">
+                  <ShieldAlert className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white group-hover:text-amber-300 transition-colors">
+                    {pendingCount} Registration & Login Request{pendingCount > 1 ? 's' : ''} Awaiting Super Admin Authorization
+                  </h4>
+                  <p className="text-xs text-slate-400">
+                    Faculty mentors and Department Heads require approval before logging in. Click to review and accept requests.
+                  </p>
+                </div>
+              </div>
+              <span className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition-all">
+                Review & Accept Requests →
+              </span>
+            </div>
+          )}
+
+          {/* Org Solve Difficulty Chart */}
+          <div className="glass-card rounded-3xl p-6 border border-slate-800 flex flex-col justify-between">
+            <div className="mb-4">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <BarChart2 className="w-4 h-4 text-indigo-400" /> Org-Wide Solves by Difficulty
+              </h3>
+              <p className="text-xs text-slate-400">Aggregate metrics across all active cohorts</p>
+            </div>
+
+            <div className="w-full h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                  <XAxis dataKey="difficulty" stroke="#94a3b8" tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                  <YAxis stroke="#475569" />
+                  <Tooltip contentStyle={{ backgroundColor: '#111827', borderColor: '#374151', borderRadius: '0.75rem', color: '#fff' }} />
+                  <Bar dataKey="count" radius={[8, 8, 0, 0]}>
+                    {chartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </div>
+      )}
 
-        {/* Global Announcement Broadcaster */}
+      {/* TAB 2: PENDING ROLE APPROVALS & LOGIN REQUESTS */}
+      {activeTab === 'approvals' && (
+        <PendingApprovalsTab 
+          userRoleLevel={6} 
+          onCountChange={(count) => setPendingCount(count)} 
+        />
+      )}
+
+      {/* TAB 3: ANNOUNCEMENTS */}
+      {activeTab === 'announcements' && (
         <div className="glass-card rounded-3xl p-6 border border-slate-800 space-y-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center">
@@ -252,12 +382,12 @@ const SuperAdminDashboard = () => {
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1">Message Body</label>
               <textarea
-                rows="3"
+                rows="4"
                 required
                 value={announcementMsg}
                 onChange={(e) => setAnnouncementMsg(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-sm text-white outline-none focus:border-amber-500"
-                placeholder="Details about the competition..."
+                placeholder="Details about the competition or maintenance..."
               />
             </div>
 
@@ -272,87 +402,90 @@ const SuperAdminDashboard = () => {
             </div>
           </form>
         </div>
-      </div>
+      )}
 
-      {/* Organization White-Label Customizer & Billing Settings */}
-      <div className="glass-card rounded-3xl p-6 border border-slate-800 space-y-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center">
-            <Sliders className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="text-base font-bold text-white">White-Label Branding & Billing Plan</h3>
-            <p className="text-xs text-slate-400">Configure corporate branding and enterprise plan tier</p>
-          </div>
-        </div>
-
-        {brandingMsg && (
-          <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4" />
-            {brandingMsg}
-          </div>
-        )}
-
-        <form onSubmit={handleUpdateBranding} className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Company / Organization Name</label>
-            <input
-              type="text"
-              required
-              value={companyName}
-              onChange={(e) => setCompanyName(e.target.value)}
-              className="w-full px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white outline-none focus:border-indigo-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Primary Theme Accent</label>
-            <div className="flex items-center gap-2">
-              <input
-                type="color"
-                value={primaryColor}
-                onChange={(e) => setPrimaryColor(e.target.value)}
-                className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 cursor-pointer"
-              />
-              <input
-                type="text"
-                value={primaryColor}
-                onChange={(e) => setPrimaryColor(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-mono text-white"
-              />
+      {/* TAB 4: BRANDING & BILLING */}
+      {activeTab === 'branding' && (
+        <div className="glass-card rounded-3xl p-6 border border-slate-800 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center">
+              <Sliders className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white">White-Label Branding & Billing Plan</h3>
+              <p className="text-xs text-slate-400">Configure corporate branding and enterprise plan tier</p>
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Subscription Plan Tier</label>
-            <select
-              value={plan}
-              onChange={(e) => setPlan(e.target.value)}
-              className="w-full px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white outline-none focus:border-indigo-500"
-            >
-              <option value="Basic">Basic Plan (Up to 50 users)</option>
-              <option value="Pro">Pro Plan (Up to 250 users)</option>
-              <option value="Enterprise">Enterprise Unlimited Plan</option>
-            </select>
-          </div>
+          {brandingMsg && (
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4" />
+              {brandingMsg}
+            </div>
+          )}
 
-          <div className="md:col-span-3 flex justify-end pt-2">
-            <button
-              type="submit"
-              className="flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-600/30 transition-all active:scale-95"
-            >
-              <Save className="w-4 h-4" />
-              Save Branding & Plan
-            </button>
-          </div>
-        </form>
-      </div>
+          <form onSubmit={handleUpdateBranding} className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">Company / Organization Name</label>
+              <input
+                type="text"
+                required
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                className="w-full px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white outline-none focus:border-indigo-500"
+              />
+            </div>
 
-      {/* All Members Daily Progress Board section */}
-      <div className="pt-4 border-t border-slate-800/80">
-        <UserProgressPage />
-      </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">Primary Theme Accent</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={primaryColor}
+                  onChange={(e) => setPrimaryColor(e.target.value)}
+                  className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 cursor-pointer"
+                />
+                <input
+                  type="text"
+                  value={primaryColor}
+                  onChange={(e) => setPrimaryColor(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-mono text-white"
+                />
+              </div>
+            </div>
 
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">Subscription Plan Tier</label>
+              <select
+                value={plan}
+                onChange={(e) => setPlan(e.target.value)}
+                className="w-full px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white outline-none focus:border-indigo-500"
+              >
+                <option value="Basic">Basic Plan (Up to 50 users)</option>
+                <option value="Pro">Pro Plan (Up to 250 users)</option>
+                <option value="Enterprise">Enterprise Unlimited Plan</option>
+              </select>
+            </div>
+
+            <div className="md:col-span-3 flex justify-end pt-2">
+              <button
+                type="submit"
+                className="flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-600/30 transition-all active:scale-95"
+              >
+                <Save className="w-4 h-4" />
+                Save Branding & Plan
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* TAB 5: DAILY PROGRESS */}
+      {activeTab === 'progress' && (
+        <div className="pt-2">
+          <UserProgressPage />
+        </div>
+      )}
 
       {/* Admin Creation Modal */}
       {modalOpen && (
@@ -419,3 +552,4 @@ const SuperAdminDashboard = () => {
 };
 
 export default SuperAdminDashboard;
+
